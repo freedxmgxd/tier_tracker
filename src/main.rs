@@ -2,7 +2,7 @@ use std::env;
 
 use dotenvy::dotenv;
 
-use elo_tracker::{
+use tier_tracker::{
     clear_current_role,
     lol::{get_summoner_id, get_summoner_rank},
     update_role,
@@ -11,8 +11,7 @@ use serenity::{
     async_trait,
     model::{
         channel::Message,
-        gateway::{Presence, Ready},
-        prelude::ChannelId,
+        gateway::{Presence, Ready}
     },
     prelude::*,
 };
@@ -74,7 +73,7 @@ impl EventHandler for Bot {
                         .await
                         .unwrap();
                     }
-                    Err(error) => {
+                    Err(_) => {
                         todo!(); // TODO: Handle error
                     }
                 };
@@ -137,7 +136,7 @@ impl EventHandler for Bot {
                     .unwrap();
                 }
             }
-            Err(error) => {
+            Err(_) => {
                 todo!(); // TODO: Handle error
             }
         }

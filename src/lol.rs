@@ -3,7 +3,7 @@ use std::env;
 
 use serde_json::Value;
 
-pub async fn get_summoner_id(summoner_name: String) -> Result<String, reqwest::Error> {
+pub async fn get_summoner_id(summoner_name: &String) -> Result<String, reqwest::Error> {
     let url = format!(
         "https://br1.api.riotgames.com/lol/summoner/v4/summoners/by-name/{}?api_key={}",
         summoner_name.replace(" ", "%20"),
@@ -19,7 +19,7 @@ pub async fn get_summoner_id(summoner_name: String) -> Result<String, reqwest::E
     Ok(summoner["id"].as_str().unwrap().to_string())
 }
 
-pub async fn get_summoner_rank(summoner_id: String) -> Result<String, reqwest::Error> {
+pub async fn get_summoner_rank(summoner_id: &String) -> Result<String, reqwest::Error> {
     let url = format!(
         "https://br1.api.riotgames.com/lol/league/v4/entries/by-summoner/{}?api_key={}",
         summoner_id,

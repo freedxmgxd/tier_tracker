@@ -1,10 +1,11 @@
 use std::env;
 
-use dotenv::dotenv;
+use dotenvy::dotenv;
 
 use elo_tracker::{
     clear_current_role,
-    lol::{get_summoner_id, get_summoner_rank}, update_role,
+    lol::{get_summoner_id, get_summoner_rank},
+    update_role,
 };
 use serenity::{
     async_trait,
@@ -15,16 +16,20 @@ use serenity::{
     },
     prelude::*,
 };
+use sqlx::{mysql::MySqlPoolOptions, query, MySqlPool};
 
-struct Handler;
+struct Bot {
+    database: MySqlPool,
+}
 
 #[async_trait]
-impl EventHandler for Handler {
+impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
         let (command, args) = msg
             .content
             .split_once(" ")
             .unwrap_or((msg.content.as_str(), ""));
+        let author_id = msg.author.id;
 
         match command {
             "!ping" => {
@@ -33,8 +38,46 @@ impl EventHandler for Handler {
                 }
             }
             "!track" => {
-                let summoner_id = get_summoner_id(String::from(args)).await.unwrap();
-                let summoner_rank = get_summoner_rank(summoner_id).await.unwrap();
+                let summoner_id = get_summoner_id(&args.to_string())
+                    .await
+                    .expect("Error getting summoner id");
+                let summoner_rank = get_summoner_rank(&summoner_id)
+                    .await
+                    .expect("Error getting summoner rank");
+
+                match query!(
+                    "SELECT * FROM summoners WHERE discord_id = ?",
+                    author_id.to_string()
+                )
+                .fetch_one(&self.database)
+                .await
+                {
+                    Ok(_) => {
+                        query!(
+                            "UPDATE summoners SET summoner_id = ?, rank = ? WHERE discord_id = ?",
+                            summoner_id,
+                            summoner_rank,
+                            author_id.to_string()
+                        )
+                        .execute(&self.database)
+                        .await
+                        .unwrap();
+                    }
+                    Err(sqlx::Error::RowNotFound) => {
+                        query!(
+                        "INSERT INTO summoners (discord_id, summoner_id, rank) VALUES (?, ?, ?)",
+                        author_id.to_string(),
+                        summoner_id,
+                        summoner_rank
+                    )
+                        .execute(&self.database)
+                        .await
+                        .unwrap();
+                    }
+                    Err(error) => {
+                        todo!(); // TODO: Handle error
+                    }
+                };
 
                 let guild = msg
                     .guild_id
@@ -43,9 +86,9 @@ impl EventHandler for Handler {
                     .await
                     .unwrap();
 
-                clear_current_role(&ctx.http, &guild, msg.author.id).await;
+                clear_current_role(&ctx.http, &guild, author_id).await;
 
-                update_role(&ctx.http, &guild, msg.author.id, summoner_rank.as_str()).await;
+                update_role(&ctx.http, &guild, author_id, summoner_rank.as_str()).await;
             }
             "!untrack" => {
                 let guild = msg
@@ -55,26 +98,49 @@ impl EventHandler for Handler {
                     .await
                     .unwrap();
 
-                clear_current_role(&ctx.http, &guild, msg.author.id).await;
+                query!(
+                    "DELETE FROM summoners WHERE discord_id = ?",
+                    author_id.to_string()
+                )
+                .execute(&self.database)
+                .await
+                .unwrap();
+
+                clear_current_role(&ctx.http, &guild, author_id).await;
             }
             _ => {}
         }
     }
     async fn presence_update(&self, _ctx: Context, new_data: Presence) {
-        let channel: ChannelId = ChannelId(env::var("CHANNEL_ID").unwrap().parse().unwrap());
 
-        // let member = new_data.guild_id.unwrap().member(&_ctx.http, new_data.user.id).await.unwrap();
+        let user_id = new_data.user.id;
 
-        let nick = new_data.user.name.unwrap_or("Slug!".to_string());
+        let row = query!(
+            "SELECT * FROM summoners WHERE discord_id = ?",
+            user_id.to_string()
+        )
+        .fetch_one(&self.database)
+        .await
+        .unwrap();
 
-        let response = "Hi ".to_string() + &nick + "!";
-
-        channel.say(&_ctx.http, response).await.expect("Deu ruim");
-
-        println!(
-            "Hello from the presence_update event! id: {} name: {}",
-            new_data.user.id, nick
-        );
+        let new_rank = get_summoner_rank(&row.summoner_id).await;
+        match new_rank {
+            Ok(new_rank) => {
+                if new_rank != row.rank {
+                    query!(
+                        "UPDATE summoners SET rank = ? WHERE discord_id = ?",
+                        new_rank,
+                        user_id.to_string()
+                    )
+                    .execute(&self.database)
+                    .await
+                    .unwrap();
+                }
+            }
+            Err(error) => {
+                todo!(); // TODO: Handle error
+            }
+        }
     }
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
@@ -86,14 +152,19 @@ async fn main() {
     dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let db_url = env::var("DATABASE_URL").expect("Expected a database url in the environment");
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_PRESENCES;
 
+    let database = MySqlPoolOptions::new().connect(&db_url).await.unwrap();
+
+    let bot = Bot { database };
+
     let mut client = Client::builder(&token, intents)
-        .event_handler(Handler)
+        .event_handler(bot)
         .await
         .expect("Err creating client");
 

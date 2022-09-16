@@ -2,20 +2,20 @@ use std::env;
 
 use dotenvy::dotenv;
 
+use serenity::{
+    async_trait,
+    model::{
+        channel::Message,
+        gateway::{Presence, Ready},
+    },
+    prelude::*,
+};
+use sqlx::{mysql::MySqlPoolOptions, query, MySqlPool};
 use tier_tracker::{
     clear_current_role,
     lol::{get_summoner_id, get_summoner_rank},
     update_role,
 };
-use serenity::{
-    async_trait,
-    model::{
-        channel::Message,
-        gateway::{Presence, Ready}
-    },
-    prelude::*,
-};
-use sqlx::{mysql::MySqlPoolOptions, query, MySqlPool};
 
 struct Bot {
     database: MySqlPool,
@@ -40,7 +40,7 @@ impl EventHandler for Bot {
                 let summoner_id = get_summoner_id(&args.to_string())
                     .await
                     .expect("Error getting summoner id");
-                let summoner_rank = get_summoner_rank(&summoner_id)
+                let summoner_elo = get_summoner_rank(&summoner_id)
                     .await
                     .expect("Error getting summoner rank");
 
@@ -53,9 +53,9 @@ impl EventHandler for Bot {
                 {
                     Ok(_) => {
                         query!(
-                            "UPDATE summoners SET summoner_id = ?, rank = ? WHERE discord_id = ?",
+                            "UPDATE summoners SET summoner_id = ?, elo = ? WHERE discord_id = ?",
                             summoner_id,
-                            summoner_rank,
+                            summoner_elo,
                             author_id.to_string()
                         )
                         .execute(&self.database)
@@ -64,11 +64,11 @@ impl EventHandler for Bot {
                     }
                     Err(sqlx::Error::RowNotFound) => {
                         query!(
-                        "INSERT INTO summoners (discord_id, summoner_id, rank) VALUES (?, ?, ?)",
-                        author_id.to_string(),
-                        summoner_id,
-                        summoner_rank
-                    )
+                            "INSERT INTO summoners (discord_id, summoner_id, elo) VALUES (?, ?, ?)",
+                            author_id.to_string(),
+                            summoner_id,
+                            summoner_elo
+                        )
                         .execute(&self.database)
                         .await
                         .unwrap();
@@ -87,7 +87,7 @@ impl EventHandler for Bot {
 
                 clear_current_role(&ctx.http, &guild, author_id).await;
 
-                update_role(&ctx.http, &guild, author_id, summoner_rank.as_str()).await;
+                update_role(&ctx.http, &guild, author_id, summoner_elo.as_str()).await;
             }
             "!untrack" => {
                 let guild = msg
@@ -110,8 +110,7 @@ impl EventHandler for Bot {
             _ => {}
         }
     }
-    async fn presence_update(&self, _ctx: Context, new_data: Presence) {
-
+    async fn presence_update(&self, ctx: Context, new_data: Presence) {
         let user_id = new_data.user.id;
 
         let row = query!(
@@ -122,18 +121,29 @@ impl EventHandler for Bot {
         .await
         .unwrap();
 
-        let new_rank = get_summoner_rank(&row.summoner_id).await;
-        match new_rank {
-            Ok(new_rank) => {
-                if new_rank != row.rank {
+        let new_elo = get_summoner_rank(&row.summoner_id).await;
+        match new_elo {
+            Ok(new_elo) => {
+                if new_elo != row.elo {
                     query!(
-                        "UPDATE summoners SET rank = ? WHERE discord_id = ?",
-                        new_rank,
+                        "UPDATE summoners SET elo = ? WHERE discord_id = ?",
+                        new_elo,
                         user_id.to_string()
                     )
                     .execute(&self.database)
                     .await
                     .unwrap();
+
+                    let guild = new_data
+                    .guild_id
+                    .unwrap()
+                    .to_partial_guild(&ctx.http)
+                    .await
+                    .unwrap();
+
+                    clear_current_role(&ctx.http, &guild, user_id).await;
+
+                    update_role(&ctx.http, &guild, user_id, &new_elo.as_str()).await;
                 }
             }
             Err(_) => {

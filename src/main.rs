@@ -2,6 +2,8 @@ use std::env;
 
 use dotenvy::dotenv;
 
+use firestore::{path, paths, FirestoreDb};
+use serde::{Deserialize, Serialize};
 use serenity::{
     async_trait,
     model::{
@@ -10,7 +12,6 @@ use serenity::{
     },
     prelude::*,
 };
-use sqlx::{mysql::MySqlPoolOptions, query, MySqlPool};
 use tier_tracker::{
     clear_current_role,
     lol::{get_summoner_id, get_summoner_rank},
@@ -18,7 +19,23 @@ use tier_tracker::{
 };
 
 struct Bot {
-    database: MySqlPool,
+    database: FirestoreDb,
+}
+
+const GUILDS_COLLECTION: &str = "guilds";
+const USERS_COLLECTION: &str = "users";
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct Guild {
+    id: u64,
+    name: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct User {
+    disc_id: u64,
+    name: String,
+    summoner_id: String,
+    rank: String,
 }
 
 #[async_trait]
@@ -30,8 +47,42 @@ impl EventHandler for Bot {
             .unwrap_or((msg.content.as_str(), ""));
         let author_id = msg.author.id;
 
+        let db = &self.database;
+
         match command {
             "!ping" => {
+                let guild = msg
+                    .guild_id
+                    .unwrap()
+                    .to_partial_guild(&ctx.http)
+                    .await
+                    .unwrap();
+
+                let guild_data = Guild {
+                    id: *(&guild).id.as_u64(),
+                    name: (&guild).name.clone(),
+                };
+
+                let guild_doc: Result<Guild, firestore::errors::FirestoreError> = db
+                    .get_obj(GUILDS_COLLECTION, &guild_data.id.to_string())
+                    .await;
+
+                match guild_doc {
+                    Ok(doc) => {
+                        println!("Found guild: {:?}", doc);
+                    }
+                    Err(firestore::errors::FirestoreError::DataNotFoundError(_)) => {
+                        println!("Guild not found, creating new one");
+                        println!("Guild: {:?}", guild_data);
+                        db.create_obj(GUILDS_COLLECTION, &guild_data.id.to_string(), &guild_data)
+                            .await
+                            .unwrap();
+                    }
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                    }
+                };
+
                 if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
                     println!("Error sending message: {:?}", why);
                 }
@@ -44,46 +95,63 @@ impl EventHandler for Bot {
                     .await
                     .expect("Error getting summoner rank");
 
-                match query!(
-                    "SELECT * FROM summoners WHERE discord_id = ?",
-                    author_id.to_string()
-                )
-                .fetch_one(&self.database)
-                .await
-                {
-                    Ok(_) => {
-                        query!(
-                            "UPDATE summoners SET summoner_id = ?, elo = ? WHERE discord_id = ?",
-                            summoner_id,
-                            summoner_elo,
-                            author_id.to_string()
-                        )
-                        .execute(&self.database)
-                        .await
-                        .unwrap();
-                    }
-                    Err(sqlx::Error::RowNotFound) => {
-                        query!(
-                            "INSERT INTO summoners (discord_id, summoner_id, elo) VALUES (?, ?, ?)",
-                            author_id.to_string(),
-                            summoner_id,
-                            summoner_elo
-                        )
-                        .execute(&self.database)
-                        .await
-                        .unwrap();
-                    }
-                    Err(_) => {
-                        todo!(); // TODO: Handle error
-                    }
-                };
-
                 let guild = msg
                     .guild_id
                     .unwrap()
                     .to_partial_guild(&ctx.http)
                     .await
                     .unwrap();
+
+                let user_data = User {
+                    disc_id: *(&author_id).as_u64(),
+                    name: msg.author.name,
+                    summoner_id,
+                    rank: (&summoner_elo).to_string(),
+                };
+
+                let users_path = format!(
+                    "{}/{}/{}",
+                    db.get_documents_path(),
+                    GUILDS_COLLECTION,
+                    &guild.id.as_u64()
+                );
+
+                let user_doc: Result<User, firestore::errors::FirestoreError> = db
+                    .get_obj_at(
+                        &users_path,
+                        USERS_COLLECTION,
+                        user_data.disc_id.to_string(),
+                    )
+                    .await;
+
+                match user_doc {
+                    Ok(_) => {
+                        db.update_obj_at(
+                            &users_path,
+                            USERS_COLLECTION,
+                            user_data.disc_id.to_string(),
+                            &User {
+                                ..user_data.clone()
+                            },
+                            Some(paths!(User::{name, summoner_id, rank})),
+                        )
+                        .await
+                        .unwrap();
+                    }
+                    Err(firestore::errors::FirestoreError::DataNotFoundError(_)) => {
+                        db.create_obj_at(
+                            &users_path,
+                            USERS_COLLECTION,
+                            user_data.disc_id.to_string(),
+                            &user_data,
+                        )
+                        .await
+                        .unwrap();
+                    }
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                    }
+                };
 
                 clear_current_role(&ctx.http, &guild, author_id).await;
 
@@ -97,11 +165,18 @@ impl EventHandler for Bot {
                     .await
                     .unwrap();
 
-                query!(
-                    "DELETE FROM summoners WHERE discord_id = ?",
-                    author_id.to_string()
+                let users_collection = format!(
+                    "{}/{}/{}",
+                    db.get_documents_path(),
+                    GUILDS_COLLECTION,
+                    &guild.id.as_u64()
+                );
+
+                db.delete_by_id_at(
+                    &users_collection,
+                    USERS_COLLECTION,
+                    author_id.as_u64().to_string(),
                 )
-                .execute(&self.database)
                 .await
                 .unwrap();
 
@@ -111,45 +186,59 @@ impl EventHandler for Bot {
         }
     }
     async fn presence_update(&self, ctx: Context, new_data: Presence) {
+        let db = &self.database;
+
         let user_id = new_data.user.id;
 
-        let row = query!(
-            "SELECT * FROM summoners WHERE discord_id = ?",
-            user_id.to_string()
-        )
-        .fetch_one(&self.database)
-        .await
-        .unwrap();
+        let guild = new_data
+            .guild_id
+            .unwrap()
+            .to_partial_guild(&ctx.http)
+            .await
+            .unwrap();
 
-        let new_elo = get_summoner_rank(&row.summoner_id).await;
-        match new_elo {
-            Ok(new_elo) => {
-                if new_elo != row.elo {
-                    query!(
-                        "UPDATE summoners SET elo = ? WHERE discord_id = ?",
-                        new_elo,
-                        user_id.to_string()
-                    )
-                    .execute(&self.database)
+        let users_path = format!(
+            "{}/{}/{}",
+            db.get_documents_path(),
+            GUILDS_COLLECTION,
+            &guild.id.as_u64()
+        );
+
+        let user_doc: Result<User, firestore::errors::FirestoreError> = db
+            .get_obj_at(&users_path, USERS_COLLECTION, user_id.as_u64().to_string())
+            .await;
+
+        match user_doc {
+            Ok(user) => {
+                let new_elo = get_summoner_rank(&user.summoner_id)
                     .await
-                    .unwrap();
+                    .expect("Error getting summoner rank");
 
-                    let guild = new_data
-                    .guild_id
-                    .unwrap()
-                    .to_partial_guild(&ctx.http)
+                if new_elo != user.rank {
+                    db.update_obj_at(
+                        &users_path,
+                        USERS_COLLECTION,
+                        user_id.as_u64().to_string(),
+                        &User {
+                            ..user.clone()
+                        },
+                        Some(paths!(User::{rank})),
+                    )
                     .await
                     .unwrap();
 
                     clear_current_role(&ctx.http, &guild, user_id).await;
-
-                    update_role(&ctx.http, &guild, user_id, &new_elo.as_str()).await;
+                    
+                    update_role(&ctx.http, &guild, user_id, new_elo.as_str()).await;
+                    println!("Updated user: {:?}", user);
                 }
             }
-            Err(_) => {
-                todo!(); // TODO: Handle error
+            Err(firestore::errors::FirestoreError::DataNotFoundError(_)) => {}
+            Err(err) => {
+                println!("Error: {:?}", err);
             }
-        }
+        };
+
     }
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
@@ -161,14 +250,14 @@ async fn main() {
     dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    let db_url = env::var("DATABASE_URL").expect("Expected a database url in the environment");
+    let project_id = env::var("PROJECT_ID").expect("Expected a database url in the environment");
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_PRESENCES;
 
-    let database = MySqlPoolOptions::new().connect(&db_url).await.unwrap();
+    let database = FirestoreDb::new(project_id).await.unwrap();
 
     let bot = Bot { database };
 

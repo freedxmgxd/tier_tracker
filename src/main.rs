@@ -116,38 +116,21 @@ impl EventHandler for Bot {
                     &guild.id.as_u64()
                 );
 
+                // Using update instead of create because we want to update the user if they already exist
                 let user_doc: Result<User, firestore::errors::FirestoreError> = db
-                    .get_obj_at(
+                    .update_obj_at(
                         &users_path,
                         USERS_COLLECTION,
                         user_data.disc_id.to_string(),
+                        &User {
+                            ..user_data.clone()
+                        },
+                        Some(paths!(User::{name, summoner_id, rank, disc_id})),
                     )
                     .await;
 
                 match user_doc {
-                    Ok(_) => {
-                        db.update_obj_at(
-                            &users_path,
-                            USERS_COLLECTION,
-                            user_data.disc_id.to_string(),
-                            &User {
-                                ..user_data.clone()
-                            },
-                            Some(paths!(User::{name, summoner_id, rank})),
-                        )
-                        .await
-                        .unwrap();
-                    }
-                    Err(firestore::errors::FirestoreError::DataNotFoundError(_)) => {
-                        db.create_obj_at(
-                            &users_path,
-                            USERS_COLLECTION,
-                            user_data.disc_id.to_string(),
-                            &user_data,
-                        )
-                        .await
-                        .unwrap();
-                    }
+                    Ok(_) => {}
                     Err(err) => {
                         println!("Error: {:?}", err);
                     }
@@ -219,16 +202,14 @@ impl EventHandler for Bot {
                         &users_path,
                         USERS_COLLECTION,
                         user_id.as_u64().to_string(),
-                        &User {
-                            ..user.clone()
-                        },
+                        &User { ..user.clone() },
                         Some(paths!(User::{rank})),
                     )
                     .await
                     .unwrap();
 
                     clear_current_role(&ctx.http, &guild, user_id).await;
-                    
+
                     update_role(&ctx.http, &guild, user_id, new_elo.as_str()).await;
                     println!("Updated user: {:?}", user);
                 }
@@ -238,7 +219,6 @@ impl EventHandler for Bot {
                 println!("Error: {:?}", err);
             }
         };
-
     }
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);

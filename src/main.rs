@@ -1,6 +1,6 @@
 use std::env;
 
-use dotenvy::dotenv;
+// use dotenvy::dotenv;
 
 use firestore::{path, paths, FirestoreDb};
 use serde::{Deserialize, Serialize};
@@ -227,7 +227,7 @@ impl EventHandler for Bot {
 
 #[tokio::main]
 async fn main() {
-    dotenv().ok();
+    // dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let project_id = env::var("PROJECT_ID").expect("Expected a database url in the environment");

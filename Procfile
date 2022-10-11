@@ -1,1 +1,1 @@
-web: ./target/release/tier_tracker
+worker: ./target/release/tier_tracker

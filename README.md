@@ -6,7 +6,7 @@ This bot is a simple bot that tracks the tier ranking of players in League of Le
 
 ## Usage
 
-To enable the bot, type `!ping` in the channel that the bot has access to. The bot will then respond with a message that says `Pong!`. This means that the bot is online and ready to be used.
+To enable the bot, type `!ping` in the channel that the bot has access to. The bot will then respond with a message that says, `Pong!`. This means that the bot is online and ready to be used.
 
 To a player be tracked, type `!track <summoner name>`. This means that the bot is now tracking the player's tier and will assign them a role in the discord channel based on their tier, which will be updated every time the player logs in to the discord channel.
 

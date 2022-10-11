@@ -30,11 +30,18 @@ pub async fn get_summoner_rank(summoner_id: &String) -> Result<String, reqwest::
 
     let summoner: Value = serde_json::from_str(&summoner).unwrap();
 
-    if summoner[0]["queueType"].as_str().unwrap() == "RANKED_SOLO_5x5" {
-        Ok(summoner[0]["tier"].as_str().unwrap().to_string())
-    } else if summoner[1]["queueType"].as_str().unwrap() == "RANKED_SOLO_5x5" {
-        Ok(summoner[1]["tier"].as_str().unwrap().to_string())
-    } else {
-        Ok("Unranked".to_string())
+    // if summoner[0]["queueType"].as_str().unwrap() == "RANKED_SOLO_5x5" {
+    //     Ok(summoner[0]["tier"].as_str().unwrap().to_string())
+    // } else if summoner[1]["queueType"].as_str().unwrap() == "RANKED_SOLO_5x5" {
+    //     Ok(summoner[1]["tier"].as_str().unwrap().to_string())
+    // } else {
+    //     Ok("Unranked".to_string())
+    // }
+
+    for i in 0..summoner.as_array().unwrap().len() {
+        if summoner[i]["queueType"].as_str().unwrap() == "RANKED_SOLO_5x5" {
+            return Ok(summoner[i]["tier"].as_str().unwrap().to_string());
+        }
     }
+    return Ok("UNRANKED".to_string());
 }

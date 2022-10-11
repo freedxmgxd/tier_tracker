@@ -262,7 +262,7 @@ async fn main() -> io::Result<()> {
         .parse()
         .expect("PORT must be a number");
 
-    let listener = TcpListener::bind(format!("0.0.0.1:{}", port)).await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
     loop {
         let (socket, _) = listener.accept().await?;

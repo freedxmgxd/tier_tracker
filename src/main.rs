@@ -10,7 +10,7 @@ use serenity::{
         channel::Message,
         gateway::{Presence, Ready},
     },
-    prelude::*,
+    prelude::*, utils::{MessageBuilder, EmbedMessageBuilding},
 };
 use tier_tracker::{
     clear_current_role,
@@ -84,7 +84,16 @@ impl EventHandler for Bot {
                     }
                 };
 
-                if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
+                let response = MessageBuilder::new()
+                    .push("Pong!")
+                    .push_line("")
+                    .push_bold_safe("Bot created by: ")
+                    .push_named_link("Freedxm_Gxd", "https://github.com/freedxmgxd")
+                    .build();
+
+
+
+                if let Err(why) = msg.channel_id.say(&ctx.http, response).await {
                     println!("Error sending message: {:?}", why);
                 }
             }

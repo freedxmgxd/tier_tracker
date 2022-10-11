@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, io};
 
 // use dotenvy::dotenv;
 
@@ -17,6 +17,7 @@ use tier_tracker::{
     lol::{get_summoner_id, get_summoner_rank},
     update_role,
 };
+use tokio::net::TcpListener;
 
 struct Bot {
     database: FirestoreDb,
@@ -225,8 +226,8 @@ impl EventHandler for Bot {
     }
 }
 
-#[tokio::main]
-async fn main() {
+
+async fn process_socket<T>(socket: T) {
     // dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
@@ -248,5 +249,18 @@ async fn main() {
 
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
+    }
+
+    
+}
+
+
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+        process_socket(socket).await;
     }
 }

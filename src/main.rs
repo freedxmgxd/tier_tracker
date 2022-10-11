@@ -1,6 +1,6 @@
 use std::{env, io};
 
-use dotenvy::dotenv;
+// use dotenvy::dotenv;
 
 use firestore::{path, paths, FirestoreDb};
 use serde::{Deserialize, Serialize};
@@ -223,7 +223,7 @@ impl EventHandler for Bot {
 }
 
 async fn process_socket<T>(_socket: T) {
-    dotenv().ok();
+    // dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let project_id = env::var("PROJECT_ID").expect("Expected a database url in the environment");
@@ -254,7 +254,7 @@ async fn main() -> io::Result<()> {
         .parse()
         .expect("PORT must be a number");
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
     loop {
         let (socket, _) = listener.accept().await?;

@@ -257,7 +257,12 @@ async fn process_socket<T>(socket: T) {
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+    let port: u16 = env::var("PORT")
+        .unwrap_or_else(|_| "3000".to_string())
+        .parse()
+        .expect("PORT must be a number");
+
+    let listener = TcpListener::bind(format!("0.0.0.1:{}", port)).await?;
 
     loop {
         let (socket, _) = listener.accept().await?;

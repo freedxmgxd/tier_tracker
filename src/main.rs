@@ -1,6 +1,6 @@
 use std::{env, io};
 
-// use dotenvy::dotenv;
+use dotenvy::dotenv;
 
 use firestore::{path, paths, FirestoreDb};
 use serde::{Deserialize, Serialize};
@@ -137,8 +137,6 @@ impl EventHandler for Bot {
                     }
                 };
 
-                clear_current_role(&ctx.http, &guild, author_id).await;
-
                 update_role(&ctx.http, &guild, author_id, summoner_elo.as_str()).await;
             }
             "!untrack" => {
@@ -209,8 +207,6 @@ impl EventHandler for Bot {
                     .await
                     .unwrap();
 
-                    clear_current_role(&ctx.http, &guild, user_id).await;
-
                     update_role(&ctx.http, &guild, user_id, new_elo.as_str()).await;
                     println!("Updated user: {:?}", user);
                 }
@@ -226,9 +222,8 @@ impl EventHandler for Bot {
     }
 }
 
-
 async fn process_socket<T>(_socket: T) {
-    // dotenv().ok();
+    dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let project_id = env::var("PROJECT_ID").expect("Expected a database url in the environment");
@@ -250,10 +245,7 @@ async fn process_socket<T>(_socket: T) {
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
     }
-
-    
 }
-
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -262,14 +254,11 @@ async fn main() -> io::Result<()> {
         .parse()
         .expect("PORT must be a number");
 
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
 
     loop {
         let (socket, _) = listener.accept().await?;
 
-        tokio::spawn(async move {
-            process_socket(socket).await;
-        });
+        process_socket(socket).await;
     }
-
 }

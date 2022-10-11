@@ -24,17 +24,22 @@ pub async fn clear_current_role(
     ];
 
     for rank in ranks_lol {
-        while let Some(role) = guild.role_by_name(rank) {
-            let role_id = role.id;
-            let mut member = guild.member(http, user_id).await.unwrap();
+        let role = guild.role_by_name(rank);
 
-            member
-                .remove_role(http, role_id)
-                .await
-                .expect("Failed to remove role");
+        match role {
+            Some(role) => {
+                let role_id = role.id;
+                let mut member = guild.member(http, user_id).await.unwrap();
+
+                member
+                    .remove_role(http, role_id)
+                    .await
+                    .expect("Failed to remove role");
+            }
+            None => {
+                continue;
+            }
         }
-
-        continue;
     }
 }
 

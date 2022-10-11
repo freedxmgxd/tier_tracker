@@ -230,7 +230,8 @@ impl EventHandler for Bot {
     }
 }
 
-async fn process_socket<T>(_socket: T) {
+#[tokio::main]
+async fn main() {
     // dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
@@ -255,18 +256,18 @@ async fn process_socket<T>(_socket: T) {
     }
 }
 
-#[tokio::main]
-async fn main() -> io::Result<()> {
-    let port: u16 = env::var("PORT")
-        .unwrap_or_else(|_| "3000".to_string())
-        .parse()
-        .expect("PORT must be a number");
 
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+// async fn main() -> io::Result<()> {
+//     let port: u16 = env::var("PORT")
+//         .unwrap_or_else(|_| "3000".to_string())
+//         .parse()
+//         .expect("PORT must be a number");
 
-    loop {
-        let (socket, _) = listener.accept().await?;
+//     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
 
-        process_socket(socket).await;
-    }
-}
+//     loop {
+//         let (socket, _) = listener.accept().await?;
+
+//         process_socket(socket).await;
+//     }
+// }

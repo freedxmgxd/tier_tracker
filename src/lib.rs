@@ -24,21 +24,17 @@ pub async fn clear_current_role(
     ];
 
     for rank in ranks_lol {
-        let role = guild.role_by_name(rank);
-        match role {
-            Some(role) => {
-                let role_id = role.id;
-                let mut member = guild.member(http, user_id).await.unwrap();
+        while let Some(role) = guild.role_by_name(rank) {
+            let role_id = role.id;
+            let mut member = guild.member(http, user_id).await.unwrap();
 
-                member
-                    .remove_role(http, role_id)
-                    .await
-                    .expect("Failed to remove role");
-            }
-            None => {
-                continue;
-            }
+            member
+                .remove_role(http, role_id)
+                .await
+                .expect("Failed to remove role");
         }
+
+        continue;
     }
 }
 
@@ -48,6 +44,8 @@ pub async fn update_role(
     user_id: UserId,
     rank: &str,
 ) -> () {
+    clear_current_role(http, guild, user_id).await;
+
     let mut member = guild.member(http, user_id).await.unwrap();
 
     let guild_role = guild.role_by_name(rank);
@@ -60,9 +58,7 @@ pub async fn update_role(
                 .expect("Failed to add role");
         }
         None => {
-            let role = guild
-                .create_role(http, |r| r.hoist(true).name(rank))
-                .await;
+            let role = guild.create_role(http, |r| r.hoist(true).name(rank)).await;
 
             member
                 .add_role(http, role.unwrap().id)

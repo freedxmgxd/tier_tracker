@@ -227,7 +227,7 @@ impl EventHandler for Bot {
 }
 
 
-async fn process_socket<T>(socket: T) {
+async fn process_socket<T>(_socket: T) {
     // dotenv().ok();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
